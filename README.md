@@ -4,6 +4,12 @@ A wrapper around UPower's DBus API that returns connected bluetooth devices' bat
 
 ## Installing
 
+### From the AUR
+
+If you're using Arch Linux, you can install the package from the AUR under the `cppbtbl` name by using the AUR helper of your choice
+
+### Manually
+
 First of all, you're gonna need to install sdbus-c++, see [sdbus-cpp: Building and installing the library](https://github.com/Kistler-Group/sdbus-cpp#building-and-installing-the-library)
 
 Clone the repo
