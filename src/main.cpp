@@ -9,6 +9,9 @@
 #include <poll.h>
 #include <sdbus-c++/sdbus-c++.h>
 
+#include "config.h"
+#include "utils.h"
+
 // battery check interval (if a device is connected)
 #define CHECK_INTERVAL      15 * 1000
 
@@ -18,35 +21,15 @@
 
 #define PROPERTIES_IFACE    "org.freedesktop.DBus.Properties"
 
-const int icon_length = 5;
-const char *icons[5] = { "", "", "", "", "" };
 
 std::set<sdbus::ObjectPath> watch_list;
 
-enum OutputFormat {
-    format_waybar,
-    format_icon_only,
-    format_icon_device_name,
-    format_raw,
-    
-    format_invalid
-};
-OutputFormat out_format = format_raw;
+// runtime options
+struct ProgramOptions opts;
 
-const char *get_icon(int percentage) {
-    int icon_idx = (percentage * icon_length / 100) + 0.5;
-    return icons[icon_idx];
-}
-
-void replace_all(std::string &s, const std::string &search, const std::string &replace) {
-    for( size_t pos = 0; ; pos += replace.length() ) {
-        // Locate the substring to replace
-        pos = s.find( search, pos );
-        if( pos == std::string::npos ) break;
-        // Replace by erasing and inserting
-        s.erase( pos, search.length() );
-        s.insert( pos, replace );
-    }
+std::string get_icon(int percentage) {
+    int icon_idx = (percentage * opts.icons.size() / 100) + 0.5;
+    return opts.icons[icon_idx];
 }
 
 void _get_battery_infos() {
@@ -82,19 +65,27 @@ void _get_battery_infos() {
     std::string tooltip_str = tooltip.str();
     tooltip_str.erase(tooltip_str.length() - 1);
 
-    switch (out_format) {
+    switch (opts.output_format) {
         case format_waybar:
             replace_all(tooltip_str, "\n", "\\n");
             replace_all(tooltip_str, "\"", "\\\"");
             // lazy af solution, but should work
             std::cout << "{\"percentage\":" << least_percentage << ",\"tooltip\":\"" << tooltip_str << "\"}" << std::endl;
             break;
-        case format_icon_device_name:
-            std::cout << get_icon(least_percentage) << ": " << least_device_name << std::endl;
+        case format_custom:
+            {
+                // make an std::string copy of the char*
+                std::string output(opts.custom_format);
+                std::string icon = get_icon(least_percentage);
+                // replace all variables
+                replace(output, "{icon}", icon);
+                replace(output, "{percentage}", std::to_string(least_percentage));
+                replace(output, "{name}", least_device_name);
+
+                std::cout << output << std::endl;
+            }
             break;
-        case format_icon_only:
-            std::cout << get_icon(least_percentage) << std::endl;
-            break;
+        case format_raw_default:
         case format_raw:
             std::cout << tooltip_str << std::endl;
             break;
@@ -142,56 +133,15 @@ void _device_removed_signal(sdbus::Signal &signal) {
     _device_removed(device_path);
 }
 
-void help(char *name) {
-    std::cout
-        << "Usage: " << name << " -f [format] [-e]\n"
-        << "-f/--format [format]    valid options: waybar, icononly, icon+devicename, raw (default: raw)\n"
-        << "-h/--help               show this help screen\n"
-        << "-e/--dont-follow        output info and exit" << std::endl;
-}
 
-OutputFormat optarg_to_format() {
-    if (strcmp(optarg, "waybar") == 0) return format_waybar;
-    if (strcmp(optarg, "icononly") == 0) return format_icon_only;
-    if (strcmp(optarg, "icon+devicename") == 0) return format_icon_device_name;
-    if (strcmp(optarg, "raw") == 0) return format_raw;
-
-    return format_invalid;
-}
-
-int main(int argc, char *argv[]) {
-    static struct option long_options[] = {
-        {"help",        no_argument,       0, 'h'},
-        {"format",      required_argument, 0, 'f'},
-        {"dont-follow", no_argument,       0, 'e'}
-    };
-    bool dont_follow = false;
-    int opt;
-    while ((opt = getopt_long(argc, argv, "hef:", long_options, nullptr)) != -1) {
-        switch (opt) {
-            case 'h':
-                help(argv[0]);
-                return 0;
-            case 'f':
-                out_format = optarg_to_format();
-                if (out_format == format_invalid) {
-                    std::cerr << "Invalid format!\n"
-                        << "Valid values are: waybar, icononly, icon+devicename, raw." << std::endl;
-
-                    return 1;
-                }
-                break;
-            case 'e':
-                dont_follow = true;
-                break;
-            default:
-                return 1;
-        }
-    }
+int main(int argc, char *const *argv) {
+    if (int exitcode = parse_opts(argc, argv, &opts);
+        exitcode != -1)
+            return exitcode;
 
     // enumerate currently connected devices, and if applicable, add them to the watch_list
-    auto proxy = sdbus::createProxy(UPOWER_IFACE, UPOWER_PATH);
-    auto method = proxy->createMethodCall(UPOWER_IFACE, "EnumerateDevices");
+    std::unique_ptr<sdbus::IProxy> proxy = sdbus::createProxy(UPOWER_IFACE, UPOWER_PATH);
+    sdbus::MethodCall method = proxy->createMethodCall(UPOWER_IFACE, "EnumerateDevices");
     auto reply = proxy->callMethod(method);
     
     std::vector<sdbus::ObjectPath> res;
@@ -202,7 +152,7 @@ int main(int argc, char *argv[]) {
         _device_added(obj);
     }
 
-    if (dont_follow) {
+    if (opts.dont_follow) {
         _get_battery_infos();
         return 0;
     }
@@ -217,7 +167,7 @@ int main(int argc, char *argv[]) {
     // `poll` event loop + timer for polling connected devices' battery
     while (true)
     {
-        auto processed = connection->processPendingRequest();
+        bool processed = connection->processPendingRequest();
         if (processed)
             continue; // Process next one
 
@@ -234,8 +184,8 @@ int main(int argc, char *argv[]) {
 
         auto r = poll(fds, 1, timeout);
 
-        if (r < 0 && errno == EINTR)
-            continue;
+        // if (r < 0 && errno == EINTR)
+        //     continue;
 
     }
 }

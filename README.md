@@ -33,6 +33,30 @@ cppbtbl depends on sdbus-c++ which itself depends on libsystemd. Regardless of t
 
 Note that if you are using systemd, you won't have any issues using cppbtbl.
 
+## Configuration
+
+`cppbtbl` supports a variety of flags, which can be seen by doing `cppbtbl --help`.
+
+Each of these flags (in its long form) can be written inside a configuration file (with the format `name=value`) that is found inside either
+`$XDG_CONFIG_HOME/cppbtbl/config` (if defined) or `$HOME/.config/cppbtbl/config`.
+
+An example of this config file can be as follows:
+
+```
+format=custom
+output={icon} ({percentage}%)
+icons=1,2,3,4,5
+```
+
+You can also specify the `dont-follow` option here (if needed) by just typing it with no following characters.
+
+```
+format=custom
+output={icon} ({percentage}%)
+icons=1,2,3,4,5
+dont-follow
+```
+
 ## Waybar
 
 ```json
@@ -49,49 +73,34 @@ Note that if you are using systemd, you won't have any issues using cppbtbl.
 
 Change format and icons accordingly, and the module should work!
 
-## Other status bars
+## Polybar
 
-Two extra formats are offered to make cppbtbl usable in this case too. Those formats are `icononly` and `icon+devicename`. Please note that the default icons provided are part of the FontAwesome font, and (as of right now) the only way of changing them is by editing the source code.
+```
+[module/bt-battery]
+type = custom/script
 
-A better way to handle this, would be to make a script that reads `cppbtbl`'s output and re-writes it in whatever way is best for you. For example:
+exec = cppbtbl
 
-```bash
-#!/usr/bin/bash
-DEVICES=()
-PERCENTAGES=()
-timeout=
-while true; do
-    eval "read $timeout line"
-    if [ "$?" -ne "0" ]; then
-        [ -z "$timeout" ] && break
-        timeout=
-        # timeout, flush devices info
-        ...
-        continue
-    fi
-    if [ -z "$line" ]; then
-        timeout=
-        # clear ARRAYs, all devices have been disconnected
-        DEVICES=(); PERCENTAGES=()
-        echo ''
-        continue
-    fi
-
-    IFS=":"; read -a split <<< "${line//: /:}"; unset IFS
-    DEVICES[${#DEVICES}]="${split[0]}"
-    PERCENTAGES[${#PERCENTAGES}]="${split[1]}"
-    # time out read comamnd after 1 second (we supposed that if no other data is available within one second, we need to flush)
-    timeout="-t 1"
-done < <(cppbtbl -f raw)
+; This is necessary, because cppbtbl will continue running
+; so let's make sure polybar knows about it
+tail = true
 ```
 
-Please note that this is just an example, and it could likely be executed better.
+Now, you need to define your custom options, see [#configuration](#configuration).
+Please **make sure** to use `--format=custom`.
 
+## Other status bars
 
+In other status bars, just like we saw in Polybar, you can use `--format custom` and defining your own `--output`-format and your `--icons`-set
 
-Or a better way would be to just modify the source code to your likings.
+For example `cppbtbl --format custom --output "{icon} ({percentage}%)" --icons 'icon1,icon2,icon3'`.
 
+Keep in mind that by default the `cppbtbl` process will always be running and listening for connection/disconnection events, therefore your bar must be
+able to handle that. In case you want to use a "polling" approach, you can use the `--dont-follow` option, which will close the program once it
+returned the desired output.
 
+Please note that the "polling" approach won't be closely as efficient as the "listening" one, because too high of an interval will cause massive CPU usage,
+too low and you'll get a delay between your device being connected and it being shown in your bar.
 
 
 ### A thank-you goes to [@Justasic](https://github.com/Justasic) for helping me a lot in making this.
