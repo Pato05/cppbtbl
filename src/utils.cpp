@@ -41,18 +41,21 @@ void replace_all(std::string &s, const std::string &search, const std::string &r
 void help(char *name) {
     std::cout
         << "Usage: " << name << " -f [format] [-o [format]] [-e]\n"
-        << "-f/--format [format]    valid options: waybar, custom, raw (default: raw)\n"
-        << "-o/--output [format]    the custom format to be used if -f is 'custom',\n"
-        << "                        this must be a string, and you can include use the following variables:\n"
-        << "                        {icon}, {percentage}, {name}.\n"
-        << "                        please note that the 'icon' variable will be taken from the predefined\n"
-        << "                        list of fontawesome icons.\n"
-        << "-i/--icons [list]       comma-separated list of icons, one of which will be used\n"
-        << "                        in proportion to the device's percentage as the {icon}\n"
-        << "                        parameter in '--output'\n"
-        << "                        example: ',,,,'\n"
-        << "-h/--help               show this help screen\n"
-        << "-e/--dont-follow        output info and exit" << std::endl;
+        << "-f/--format [format]         valid options: waybar, custom, raw (default: raw)\n"
+        << "-o/--output [format]         the custom format to be used if -f is 'custom',\n"
+        << "                             this must be a string, and you can include use these\n"
+        << "                             variables: {icon}, {percentage}, {name}.\n"
+        << "-i/--icons [list]            comma-separated list of icons, one of which will be used\n"
+        << "                             in proportion to the device's percentage as the {icon}\n"
+        << "                             parameter in '--output'\n"
+        << "                             example: --icons='1,2,3,4,5'\n"
+        << "                             where 1,2,3,4,5 are the icons that indicate the battery\n"
+        << "                             level, in ascending order.\n"
+        << "-s/--device-separator [sep]  by setting this, the scriptwill separate devices"
+        << "                             with the given string; the --output parameter is repeated"
+        << "                             for each connected device and devices are ordered by charge."
+        << "-h/--help                    show this help screen\n"
+        << "-e/--dont-follow             output info and exit" << std::endl;
 }
 
 void incorrect_format_usage(char *name) {

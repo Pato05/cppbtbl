@@ -1,12 +1,11 @@
 #include <iostream>
-#include <string>
-#include <sstream>
 #include <set>
 #include <vector>
-#include <sys/eventfd.h>
-#include <bits/stdc++.h>
-#include <getopt.h>
+#include <string>
+#include <sstream>
 #include <poll.h>
+#include <getopt.h>
+#include <sys/eventfd.h>
 #include <sdbus-c++/sdbus-c++.h>
 
 #include "config.h"
@@ -27,13 +26,55 @@ std::set<sdbus::ObjectPath> watch_list;
 // runtime options
 struct ProgramOptions opts;
 
-std::string get_icon(int percentage) {
-    int icon_idx = (percentage * opts.icons.size() / 100) + 0.5;
+const std::string get_icon(int percentage) {
+    int icon_idx = (percentage * (opts.icons.size() - 1) / 100) + 0.5;
     return opts.icons[icon_idx];
+}
+
+void _output(std::optional<std::string> tooltip_str, int percentage, std::string device_name, OutputFormat output_format, const char* end = nullptr) {
+     switch (output_format) {
+        case format_waybar:
+            if (!tooltip_str) {
+                throw new std::runtime_error("illegal state! tooltip_str was not passed.");
+            }
+            replace_all(*tooltip_str, "\n", "\\n");
+            replace_all(*tooltip_str, "\"", "\\\"");
+            // lazy af solution, but should work
+            std::cout << "{\"percentage\":" << percentage << ",\"tooltip\":\"" << *tooltip_str << "\"}";
+            break;
+        case format_custom:
+            {
+                // make an std::string copy of the char*
+                std::string output(opts.custom_format);
+                const std::string icon = get_icon(percentage);
+                // replace all variables
+                replace(output, "{icon}", icon);
+                replace(output, "{percentage}", std::to_string(percentage));
+                replace(output, "{name}", device_name);
+
+                std::cout << output;
+            }
+            break;
+        case format_raw_default:
+        case format_raw:
+            if (!tooltip_str) {
+                throw new std::runtime_error("illegal state! tooltip_str was not passed.");
+            }
+            std::cout << *tooltip_str;
+            break;
+    }
+
+    if (end != nullptr) {
+        std::cout << end;
+    } else {
+        std::cout << std::endl;
+    }
 }
 
 void _get_battery_infos() {
     if (watch_list.empty()) return;
+
+    bool should_use_separator = opts.output_format == format_custom and opts.devices_separator != nullptr;
 
     int least_percentage = 100;
     std::string least_device_name;
@@ -54,6 +95,11 @@ void _get_battery_infos() {
         double percentage = device_obj->getProperty("Percentage")
                                 .onInterface(UPOWER_DEVICE_IFACE)
                                 .get<double>();
+        
+        if (should_use_separator) {
+            _output(std::nullopt, percentage, device_name, opts.output_format, opts.devices_separator);
+            continue;
+        }
         tooltip << device_name << ": " << percentage << "%\n";
 
         if (percentage < least_percentage) {
@@ -62,34 +108,13 @@ void _get_battery_infos() {
         }
     }
 
+    if (should_use_separator) {
+        std::cout << std::endl;
+    }
+
     std::string tooltip_str = tooltip.str();
     tooltip_str.erase(tooltip_str.length() - 1);
-
-    switch (opts.output_format) {
-        case format_waybar:
-            replace_all(tooltip_str, "\n", "\\n");
-            replace_all(tooltip_str, "\"", "\\\"");
-            // lazy af solution, but should work
-            std::cout << "{\"percentage\":" << least_percentage << ",\"tooltip\":\"" << tooltip_str << "\"}" << std::endl;
-            break;
-        case format_custom:
-            {
-                // make an std::string copy of the char*
-                std::string output(opts.custom_format);
-                std::string icon = get_icon(least_percentage);
-                // replace all variables
-                replace(output, "{icon}", icon);
-                replace(output, "{percentage}", std::to_string(least_percentage));
-                replace(output, "{name}", least_device_name);
-
-                std::cout << output << std::endl;
-            }
-            break;
-        case format_raw_default:
-        case format_raw:
-            std::cout << tooltip_str << std::endl;
-            break;
-    }
+    _output(tooltip_str, least_percentage, least_device_name, opts.output_format);
 }
 
 void _device_added(sdbus::ObjectPath &path) {
@@ -111,8 +136,8 @@ void _device_added(sdbus::ObjectPath &path) {
 
 void _device_removed(sdbus::ObjectPath &path) {
     watch_list.erase(path);
-    
-    if (watch_list.empty()) {
+
+     if (watch_list.empty()) {
         std::cout << std::endl;
     }
 }
@@ -165,8 +190,7 @@ int main(int argc, char *const *argv) {
     auto connection = &proxy->getConnection();
 
     // `poll` event loop + timer for polling connected devices' battery
-    while (true)
-    {
+    while (true) {
         bool processed = connection->processPendingRequest();
         if (processed)
             continue; // Process next one

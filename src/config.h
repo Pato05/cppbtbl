@@ -10,9 +10,12 @@ enum OutputFormat {
 };
 
 struct ProgramOptions {
-    std::vector<std::string> icons;
     OutputFormat output_format = format_raw_default;
-    char *custom_format;
+    // for custom format
+    std::vector<std::string> icons;
+    const char *custom_format;
+    const char *devices_separator;
+    
     bool dont_follow;
 };
 

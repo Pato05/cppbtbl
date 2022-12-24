@@ -12,12 +12,15 @@
 #include "config.h"
 #include "utils.h"
 
+#define get_config_file(config_home) config_home / "cppbtbl" / "config"
+
 static struct option long_options[] = {
-    {"help",        no_argument,       NULL, 'h'},
-    {"format",      required_argument, NULL, 'f'},
-    {"output",      required_argument, NULL, 'o'},
-    {"dont-follow", no_argument,       NULL, 'e'},
-    {"icons",       required_argument, NULL, 'i'}
+    {"help",              no_argument,       NULL, 'h'},
+    {"format",            required_argument, NULL, 'f'},
+    {"output",            required_argument, NULL, 'o'},
+    {"icons",             required_argument, NULL, 'i'},
+    {"devices-separator", required_argument, NULL, 's'},
+    {"dont-follow",       no_argument,       NULL, 'e'},
 };
 
 
@@ -50,7 +53,7 @@ int parse_config(ProgramOptions *opts) {
     auto config_home = get_config_home();
     if (!config_home) return -1;
 
-    std::filesystem::path config_file = *config_home / "cppbtbl" / "config";
+    std::filesystem::path config_file = get_config_file(*config_home);
 
     // std::cerr << "[DEBUG] config_file_path = " << config_file << std::endl;
 
@@ -101,6 +104,9 @@ int parse_config(ProgramOptions *opts) {
                 if (!opts->icons.empty()) break;
                 opts->icons = split(optarg, ',');
                 break;
+            case 's':
+                if (opts->devices_separator != nullptr) break;
+                opts->devices_separator = strdup(optarg);
             default:
                 return 1;
         }
@@ -110,18 +116,15 @@ int parse_config(ProgramOptions *opts) {
     std::for_each(
         ++_argv.begin(),
         _argv.end(),
-        [opts](const char* ptr) {
-            // std::cerr << (void *)ptr << ": " << ptr << std::endl;
+        [](const char *ptr) {
             std::free((void *)ptr);
-            //std::cerr << "opts->custom_format: " << opts->custom_format << std::endl;
-        } 
+        }
     );
 
     return -1;
 }
 
 int parse_opts(int argc, char *const argv[], ProgramOptions *opts) {
-
     // reset getopt
     optind = 1;
     int opt;
@@ -143,13 +146,15 @@ int parse_opts(int argc, char *const argv[], ProgramOptions *opts) {
             case 'i':
                 opts->icons = split(optarg, ',');
                 break;
+            case 's':
+                opts->devices_separator = std::move(optarg);
             default:
                 return 1;
         }
     }
     if (int e = parse_config(opts); e != -1) {
         std::cerr << "Error occurred while parsing config." << std::endl;
-        return 1;
+        return e;
     }
 
     if (opts->output_format == format_custom and
